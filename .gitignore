@@ -1,0 +1,22 @@
+# Large Data, Databases & Shapefiles
+*.db
+*.csv
+CamaSummary Shape Files/
+*.shp
+*.dbf
+*.shx
+*.prj
+*.qpj
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node & React
+node_modules/
+dist/
+build/
+
+# Mac System Files
+.DS_Store
