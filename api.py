@@ -5,10 +5,10 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Initialize FastAPI app
+# Start FastAPI
 app = FastAPI()
 
-# Allow frontend requests (CORS)
+# Allow request from frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,8 +20,7 @@ CURRENT_YEAR = datetime.now().year
 DATABASE_NAME = "properties.db"
 TABLE_NAME = "house_data"
 
-
-# Helper function: Math for calculating distance on a globe
+# calcualte distance between two points
 def haversine_distance(lat1, lon1, lat2, lon2):
     EARTH_RADIUS_MILES = 3958.8
 
@@ -38,7 +37,7 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return EARTH_RADIUS_MILES * c
 
 
-# Helper function: Quick box boundary calculation to filter out far properties early
+# Calculating a bounding box for the search
 def calculate_bounding_box(lat, lon, radius_miles):
     lat_change = radius_miles / 69.0
     lon_change = radius_miles / (69.0 * math.cos(math.radians(lat)))
@@ -59,7 +58,7 @@ def search_address(query: str):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # Grab up to 5 matching street addresses
+    # Get up to 5 matching addresses
     cursor.execute(
         f"SELECT DISTINCT Situs FROM {TABLE_NAME} WHERE Situs LIKE ? LIMIT 5",
         (f"{query}%",)
@@ -79,7 +78,7 @@ def get_similar_properties(address: str):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # Step 1: Query the target property's information from SQLite
+    # Get target property
     cursor.execute(f"""
         SELECT Latitude, Longitude, Total_Valu, Total_Livi, 
                Neighborho, Building_C, Year_Built, Taxing_Uni, Exemptions
@@ -89,7 +88,7 @@ def get_similar_properties(address: str):
 
     target_property = cursor.fetchone()
 
-    # Make sure target property exists and has valid square footage
+    # Check that target property is valid
     if not target_property or target_property[2] is None or target_property[3] is None or target_property[3] <= 0:
         conn.close()
         return {"error": "Target property data not found or invalid."}
@@ -101,7 +100,7 @@ def get_similar_properties(address: str):
     # Fallback for year built if missing
     t_year = t_year if (t_year and t_year > 0) else 2000
 
-    # Step 2: Set up our 4 FBCAD Cascading Tiers
+    # Set up the 4 search tiers
     tiers = [
         {
             "tier": 1,
@@ -140,19 +139,18 @@ def get_similar_properties(address: str):
     selected_comps = []
     used_tier = None
 
-    # Step 3: Run through each tier sequentially until we find at least 5 matches
     for current_tier in tiers:
         min_sqft = t_sqft * (1 - current_tier["sqft_percent"])
         max_sqft = t_sqft * (1 + current_tier["sqft_percent"])
         min_year = t_year - current_tier["age_years"]
         max_year = t_year + current_tier["age_years"]
 
-        # If Tier 4, calculate spatial bounding box values
+        # Calculate bounding box for Tier 4
         if current_tier["tier"] == 4:
             min_lat, max_lat, min_lon, max_lon = calculate_bounding_box(t_lat, t_lon, 5.0)
             current_tier["params"] = [min_lat, max_lat, min_lon, max_lon]
 
-        # SQL query hard-gates on Taxing_Uni (school district/city)
+        # Only inlcude properties with same taxing unit
         sql_query = f"""
             SELECT Situs, Total_Valu, Total_Livi, Year_Built, Exemptions, Latitude, Longitude
             FROM {TABLE_NAME}
@@ -170,7 +168,7 @@ def get_similar_properties(address: str):
         cursor.execute(sql_query, tuple(query_params))
         candidate_rows = cursor.fetchall()
 
-        # Tier 4 requires exact distance verification with Haversine math
+        # Check exact distance for Tier 4
         if current_tier["tier"] == 4:
             nearby_rows = []
             for row in candidate_rows:
@@ -179,7 +177,7 @@ def get_similar_properties(address: str):
                     nearby_rows.append(row)
             candidate_rows = nearby_rows
 
-        # Stop cascade if we have at least 5 comparable properties
+        # Stop when there are atleast 5 matches
         if len(candidate_rows) >= 5:
             selected_comps = candidate_rows
             used_tier = current_tier
@@ -187,7 +185,7 @@ def get_similar_properties(address: str):
 
     conn.close()
 
-    # Step 4: Process statistics and format property data for the UI
+    # Format results of website
     formatted_comps = []
     all_price_per_sqft = []
 
@@ -198,7 +196,6 @@ def get_similar_properties(address: str):
         price_per_sqft = comp_val / comp_sqft
         all_price_per_sqft.append(price_per_sqft)
 
-        # Calculate square footage difference percentage for color badges
         size_diff_percent = abs((comp_sqft - t_sqft) / t_sqft) * 100
 
         if size_diff_percent <= 10.0:
@@ -208,7 +205,7 @@ def get_similar_properties(address: str):
         else:
             badge_color = "red"
 
-        # Check if property has homestead or other tax exemptions
+        # Check for tax exemptions
         has_exemption = True if (comp_exempt and str(comp_exempt).strip() != "") else False
 
         formatted_comps.append({
@@ -226,10 +223,8 @@ def get_similar_properties(address: str):
     # Target property price per square foot
     target_ppsf = t_val / t_sqft
 
-    # Sort comparables by closeness to target's $/sqft
     formatted_comps.sort(key=lambda x: abs(x["ppsf"] - target_ppsf))
 
-    # Calculate Median $/sqft for statutory tax protest comparison (§41.43(b)(3))
     median_ppsf = 0
     if all_price_per_sqft:
         sorted_prices = sorted(all_price_per_sqft)
