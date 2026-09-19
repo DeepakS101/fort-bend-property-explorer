@@ -50,7 +50,7 @@
         const resultsSection = document.getElementById('resultsSection');
         const resultsList = document.getElementById('resultsList');
 
-        // 1. Fetch matching addresses from FastAPI for the dropdown
+        // Get matching address for the dropdown
         addressInput.addEventListener('input', function() {
             const typedText = addressInput.value.toUpperCase();
 
@@ -86,7 +86,7 @@
             if (e.target !== addressInput) dropdown.style.display = 'none';
         });
 
-        // 2. Fetch similar properties from FastAPI on button click
+        // Get similar properties when the button is clicked
         searchBtn.addEventListener('click', function() {
             const chosenAddress = addressInput.value;
             if (!chosenAddress) return;
